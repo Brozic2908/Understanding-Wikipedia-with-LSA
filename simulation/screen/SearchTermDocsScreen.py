@@ -11,22 +11,21 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 
-class SearchScreen(QWidget):
-    def __init__(self, term_dict, term_list, term_emb_data, doc_emb_data, topic_data):
+class SearchTermDocsScreen(QWidget):
+    def __init__(self, mU, mV, doc_list, term_list):
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         # Init data
-        self.term_dict = term_dict
+        self.doc_list = doc_list
         self.term_list = term_list
-        self.term_emb_data = term_emb_data
-        self.doc_emb_data = doc_emb_data
-        self.topics_data = topic_data
+        self.mU = mU
+        self.mV = mV
 
         # --- Search bar ---
         search_bar = QHBoxLayout()
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Enter search term...")
+        self.search_input.setPlaceholderText("Enter one term to get simular documents...")
         self.search_input.setFixedHeight(35)
         self.search_input.setStyleSheet("""
             QLineEdit { 
@@ -71,8 +70,13 @@ class SearchScreen(QWidget):
 
 
     def handle_search(self):
-        vector = self._get_search_text()
-        if vector is None:
+        index, value = self._get_search_text()
+        if value is None:
+            self._clear_results()
+            not_found_label = QLabel("<b style='color: red;'>Docs not found</b>")
+            not_found_label.setStyleSheet("font-size: 16px; margin: 8px 0;")
+            self.container_layout.insertWidget(0, not_found_label)
+            self.container_layout.addStretch()
             return
 
         self._clear_results()
@@ -81,15 +85,13 @@ class SearchScreen(QWidget):
         searching_label.setStyleSheet("font-size: 16px; margin: 8px 0;")
         self.container_layout.insertWidget(0, searching_label)
 
-        QApplication.processEvents()  
+        QApplication.processEvents()
 
         # Compute similarity
         scores = []
-        for doc in self.doc_emb_data:
-            title = doc["title"]
-            value = doc["embedding"]
-            score = self._cosine(vector, value)
-            scores.append((score, title))
+        for i, v in enumerate(self.mU):
+            score = self._cosine(value, v)
+            scores.append((score, self.doc_list[i]))
 
         scores.sort(reverse=True)
 
@@ -97,10 +99,7 @@ class SearchScreen(QWidget):
 
         for i in range(min(20, len(scores))):
             title = scores[i][1]
-            wiki_url = f"https://en.wikipedia.org/wiki/{title.replace(' ', '_')}"
-
-            title_label = QLabel(f'<a href="{wiki_url}"><b style="color:#1A0DAB; font-size:16px;">{title}</b></a>')
-            title_label.setOpenExternalLinks(True)
+            title_label = QLabel(f'<b style="color:#1A0DAB; font-size:16px;">{title}</b>')
             title_label.setWordWrap(True)
             title_label.setStyleSheet("margin-bottom: 6px; padding: 4px;")
 
@@ -112,16 +111,14 @@ class SearchScreen(QWidget):
     def _get_search_text(self):
         text = self.search_input.text().strip().lower()
 
-        vectors = []
         for t in text.split():
             if t in self.term_list:
-                vectors.append(self.term_dict[t])
-
-        if not vectors:
-            return None
-
-        return np.mean(vectors, axis=0)
-
+                try:
+                    index  = self.term_list.index(t)
+                    return index, self.mV[index]
+                except:
+                    return None, None
+        return None, None
 
     def _clear_results(self):
         # Remove all items (widgets + stretch)
